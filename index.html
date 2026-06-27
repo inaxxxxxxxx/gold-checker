@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>金・プラチナ価格 — 田中貴金属</title>
+<title>金・プラチナ価格 — 国際スポット</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
 <style>
   *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
@@ -173,7 +173,7 @@
 <div class="container">
   <h1>
     金・プラチナ価格
-    <span class="source">田中貴金属工業</span>
+    <span class="source">国際スポット価格</span>
   </h1>
 
   <div class="error" id="errorBox"></div>
@@ -182,13 +182,13 @@
     <div class="kpi">
       <div class="kpi-label" style="color: var(--gold);">● 金（Gold）</div>
       <div class="kpi-value" id="goldVal">—</div>
-      <div class="kpi-unit">円 / グラム（税込小売）</div>
+      <div class="kpi-unit">円 / グラム（スポット・純度100%）</div>
       <div class="kpi-delta" id="goldDelta">—</div>
     </div>
     <div class="kpi">
       <div class="kpi-label" style="color: var(--plat);">● プラチナ（Platinum）</div>
       <div class="kpi-value" id="platVal">—</div>
-      <div class="kpi-unit">円 / グラム（税込小売）</div>
+      <div class="kpi-unit">円 / グラム（スポット・純度100%）</div>
       <div class="kpi-delta" id="platDelta">—</div>
     </div>
     <div class="kpi">
@@ -209,11 +209,11 @@
 
   <div class="chart-wrap">
     <div class="legend">
-      <span><span class="dot" style="background:var(--gold)"></span>金（小売）</span>
-      <span><span class="dot" style="background:var(--plat); border: 1px dashed #9e9e9e;"></span>プラチナ（小売）</span>
+      <span><span class="dot" style="background:var(--gold)"></span>金（スポット）</span>
+      <span><span class="dot" style="background:var(--plat); border: 1px dashed #9e9e9e;"></span>プラチナ（スポット）</span>
     </div>
     <div class="chart-canvas-wrap">
-      <canvas id="chart" role="img" aria-label="田中貴金属の金・プラチナ価格推移（円/グラム）">田中貴金属の金・プラチナ価格推移グラフ</canvas>
+      <canvas id="chart" role="img" aria-label="金・プラチナの国際スポット価格推移（円/グラム）">金・プラチナの国際スポット価格推移グラフ</canvas>
     </div>
   </div>
 
@@ -245,7 +245,7 @@ async function load() {
 
     allData = json;
     render();
-    setStatus(`最終更新: ${new Date(json.fetched_at).toLocaleString('ja-JP')} ｜ データ: <a href="https://gold.tanaka.co.jp/commodity/souba/" target="_blank">田中貴金属工業</a>`);
+    setStatus(`最終更新: ${new Date(json.fetched_at).toLocaleString('ja-JP')} ｜ データ: <a href="https://www.goldapi.io/" target="_blank">goldapi.io（国際スポット価格・円/g換算）</a>`);
   } catch (e) {
     showError(`取得失敗: ${e.message}`);
     setStatus('');

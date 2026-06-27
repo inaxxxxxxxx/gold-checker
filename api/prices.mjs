@@ -1,87 +1,116 @@
-// api/prices.js — Vercel Serverless Function
-// 田中貴金属のHTMLをスクレイピングして金・プラチナ価格をJSONで返す
+// api/prices.mjs — Vercel Serverless Function
+// goldapi.io から金・プラチナの「国際スポット価格」を取得し、円/グラムでJSON返却する。
+//
+// 環境変数 GOLDAPI_KEY に goldapi.io の無料APIキーを設定すること。
+//   Vercel: Project Settings → Environment Variables → GOLDAPI_KEY
+//
+// 返却フォーマットはフロント(index.html)が期待する形に合わせる:
+//   { ok, fetched_at, source, latest:{gold,platinum}, history:{gold,platinum} }
+//   latest.<metal>.retail = 円/グラム（純度100% = 24金相当のスポット価格）
+//   history.<metal> = [{date:"YYYY/MM/DD", retail}, ...]（前日終値・当日の2点）
 
-const URLS = {
-  gold:     'https://gold.tanaka.co.jp/commodity/souba/d-gold.php',
-  platinum: 'https://gold.tanaka.co.jp/commodity/souba/d-platinum.php',
+const TROY_OUNCE_G = 31.1034768; // 1トロイオンス = 31.1034768 g
+
+// goldapi.io のシンボル
+const SYMBOLS = {
+  gold:     'XAU',
+  platinum: 'XPT',
 };
 
-// HTMLから価格テーブルをパース
-// 田中貴金属の価格ページは <table> に日付・小売・買取 が並ぶ形式
-function parseRows(html) {
-  const rows = [];
-
-  // <tr> ブロックを全て抽出
-  const trPattern = /<tr[^>]*>([\s\S]*?)<\/tr>/gi;
-  let trMatch;
-
-  while ((trMatch = trPattern.exec(html)) !== null) {
-    const cells = [];
-    const tdPattern = /<t[dh][^>]*>([\s\S]*?)<\/t[dh]>/gi;
-    let tdMatch;
-
-    while ((tdMatch = tdPattern.exec(trMatch[1])) !== null) {
-      // HTMLタグ除去 & トリム
-      const text = tdMatch[1].replace(/<[^>]+>/g, '').replace(/&nbsp;/g, '').trim();
-      if (text) cells.push(text);
-    }
-
-    // 日付(YYYY/MM/DD)・小売価格・買取価格の3列行を対象
-    if (cells.length >= 2 && /^\d{4}\/\d{2}\/\d{2}$/.test(cells[0])) {
-      const retail = parseInt(cells[1].replace(/,/g, ''), 10);
-      const buyback = cells[2] ? parseInt(cells[2].replace(/,/g, ''), 10) : null;
-      if (!isNaN(retail)) {
-        rows.push({
-          date:    cells[0],
-          retail,               // 小売価格（税込）円/g
-          buyback: isNaN(buyback) ? null : buyback,  // 買取価格 円/g
-        });
-      }
-    }
-  }
-
-  // 新しい順 → 古い順に並べ直す（グラフ用）
-  return rows.reverse();
-}
-
-async function fetchAndParse(url) {
-  const res = await fetch(url, {
+// 1メタル分を取得して {retailToday, retailPrev} を返す
+async function fetchMetal(symbol, key) {
+  const res = await fetch(`https://www.goldapi.io/api/${symbol}/JPY`, {
     headers: {
-      'User-Agent': 'Mozilla/5.0 (compatible; personal-price-tracker/1.0)',
-      'Accept-Language': 'ja,en;q=0.9',
+      'x-access-token': key,
+      'Content-Type': 'application/json',
     },
   });
-  if (!res.ok) throw new Error(`HTTP ${res.status} from ${url}`);
-  const html = await res.text();
-  return parseRows(html);
+
+  if (!res.ok) {
+    const body = await res.text().catch(() => '');
+    throw new Error(`goldapi ${symbol} HTTP ${res.status} ${body.slice(0, 200)}`);
+  }
+
+  const data = await res.json();
+  // price / prev_close_price はトロイオンス単位（JPY）。純価をグラム換算する。
+  const price = Number(data.price);
+  const prevClose = Number(data.prev_close_price);
+
+  if (!Number.isFinite(price)) {
+    throw new Error(`goldapi ${symbol}: price不正 (${JSON.stringify(data).slice(0, 200)})`);
+  }
+
+  const retailToday = price / TROY_OUNCE_G;
+  const retailPrev = Number.isFinite(prevClose) && prevClose > 0
+    ? prevClose / TROY_OUNCE_G
+    : null;
+
+  return { retailToday, retailPrev };
+}
+
+// JSTの YYYY/MM/DD 文字列（offsetDays日ずらし可）
+function jstDate(offsetDays = 0) {
+  const d = new Date(Date.now() + offsetDays * 86400000);
+  const parts = new Intl.DateTimeFormat('ja-JP', {
+    timeZone: 'Asia/Tokyo',
+    year: 'numeric', month: '2-digit', day: '2-digit',
+  }).formatToParts(d);
+  const get = (t) => parts.find((p) => p.type === t).value;
+  return `${get('year')}/${get('month')}/${get('day')}`;
+}
+
+// メタル1件分の latest / history を組み立てる
+function buildSeries(metal) {
+  const today = jstDate(0);
+  const yesterday = jstDate(-1);
+
+  const history = [];
+  if (metal.retailPrev != null) {
+    history.push({ date: yesterday, retail: Math.round(metal.retailPrev) });
+  }
+  history.push({ date: today, retail: Math.round(metal.retailToday) });
+
+  return {
+    latest: { retail: Math.round(metal.retailToday) },
+    history,
+  };
 }
 
 export default async function handler(req, res) {
-  // CORS — 自分のドメインに制限する場合はここを変更
+  // CORS（フロントが別オリジンから叩く場合に備える）
   res.setHeader('Access-Control-Allow-Origin', '*');
-  res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
-  res.setHeader('Cache-Control', 's-maxage=1800, stale-while-revalidate'); // 30分キャッシュ
 
-  if (req.method === 'OPTIONS') return res.status(200).end();
+  const key = process.env.GOLDAPI_KEY;
+  if (!key) {
+    return res.status(500).json({
+      ok: false,
+      error: '環境変数 GOLDAPI_KEY が未設定です（Vercelの Environment Variables に追加してください）',
+    });
+  }
 
   try {
-    const [goldRows, platRows] = await Promise.all([
-      fetchAndParse(URLS.gold),
-      fetchAndParse(URLS.platinum),
+    const [gold, platinum] = await Promise.all([
+      fetchMetal(SYMBOLS.gold, key),
+      fetchMetal(SYMBOLS.platinum, key),
     ]);
 
-    const latest = {
-      gold:     goldRows.at(-1) ?? null,
-      platinum: platRows.at(-1) ?? null,
-    };
+    const goldSeries = buildSeries(gold);
+    const platSeries = buildSeries(platinum);
+
+    // 無料枠を守るためCDNで長めにキャッシュ（6h fresh / 1d stale-while-revalidate）
+    res.setHeader('Cache-Control', 's-maxage=21600, stale-while-revalidate=86400');
 
     return res.status(200).json({
       ok: true,
       fetched_at: new Date().toISOString(),
-      latest,          // 最新1件（KPIカード用）
+      source: 'goldapi.io',
+      latest: {
+        gold: goldSeries.latest,
+        platinum: platSeries.latest,
+      },
       history: {
-        gold:     goldRows,     // 過去〜1ヶ月分
-        platinum: platRows,
+        gold: goldSeries.history,
+        platinum: platSeries.history,
       },
     });
   } catch (err) {
