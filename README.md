@@ -8,9 +8,8 @@ JSON APIとして返すVercel Serverless Proxy + フロントエンド一式。
 ```
 tanaka-proxy/
 ├── api/
-│   └── prices.js   ← Proxy（Vercel Serverless Function）
+│   └── prices.mjs  ← Proxy（Vercel Serverless Function / ESM）
 ├── index.html      ← フロントエンド（どこにでも置ける）
-├── package.json
 ├── vercel.json
 └── README.md
 ```
@@ -70,12 +69,11 @@ GET https://your-project.vercel.app/api/prices
 ## ローカルで動かす場合
 
 ```bash
-npm install
 npx vercel dev
-# → http://localhost:3000/api/prices で動作確認できる
+# → http://localhost:3000 でフロント＋ /api/prices が動作確認できる
 ```
 
-index.html の PROXY_URL を `http://localhost:3000/api/prices` に変えてブラウザで開く。
+index.html は API を相対パス `/api/prices` で呼ぶため、`vercel dev` 配下ならそのまま動く。
 
 ---
 

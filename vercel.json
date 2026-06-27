@@ -1,6 +1,6 @@
 {
   "functions": {
-    "api/prices.js": {
+    "api/prices.mjs": {
       "maxDuration": 10
     }
   }
