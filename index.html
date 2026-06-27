@@ -224,11 +224,10 @@
 
 <script>
 // ============================================================
-// ★ デプロイ後にProxyのURLをここに設定する
-// 例: 'https://your-project.vercel.app/api/prices'
-// ローカル確認時は 'http://localhost:3000/api/prices'
+// Proxy APIは同一デプロイ上の Serverless Function を相対パスで呼ぶ
+// （フロントとAPIが同じVercelプロジェクトのためドメイン指定不要）
 // ============================================================
-const PROXY_URL = 'https://your-project.vercel.app/api/prices';
+const PROXY_URL = '/api/prices';
 
 let chartInstance = null;
 let allData = null;
